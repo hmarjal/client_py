@@ -4,7 +4,6 @@ import enc_keys
 import xor_crypt
 import struct
 
-
 BUFSIZE = 128
 
 
@@ -13,7 +12,6 @@ def main():
     if len(sys.argv) != 3:
         print("[!] Wrong arguments. Usage: python3 {} <server> <port>".format(sys.argv[0]))
         return
-
     host = sys.argv[1]
     dots = len(host.split('.'))
     if dots != 4:
@@ -40,12 +38,12 @@ def main():
 
     cid = ""
     udp_port = ""
-    my_keys = enc_keys.generate_keys()
-    server_keys = []
+    encrypt_keys = enc_keys.generate_keys()
+    decrypt_keys = []
 
     # Create TCP socket
     with socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM) as tcpsocket:
-        tcpsocket.settimeout(1)
+        tcpsocket.settimeout(10)
         try:
             tcpsocket.connect((host, tcp_port))
         except (ConnectionError, OverflowError) as conn_err:
@@ -68,14 +66,14 @@ def main():
                 greeting, cid, udp_port = msg.split()
                 udp_port = int(udp_port)
             if cid and udp_port:
-                for key in my_keys:
+                for key in encrypt_keys:
                     tcpsocket.send(key+b'\r\n')
                     d_recv = tcpsocket.recv(BUFSIZE)
                     s_key = d_recv.strip(b'\r\n')
                     s_key_as_bytes = bytes(s_key)
-                    server_keys.insert(-1, s_key_as_bytes)
+                    decrypt_keys.insert(0, s_key_as_bytes)
                 tcpsocket.send(b'.\r\n')
-                print("[+] Received {} encryption keys from server".format(len(server_keys)))
+                print("[+] Received {} encryption keys from server".format(len(decrypt_keys)))
             d_recv = tcpsocket.recv(BUFSIZE)
 
         else:
@@ -84,26 +82,20 @@ def main():
     if udp_port == "":
         print("[!] Failed to receive UDP port from server.")
         return
+    decrypt_keys.reverse()
+    xcrypt = xor_crypt.XorMsg(encrypt_keys, decrypt_keys)
 
-
-"""
     # Create UDP socket
     with socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM) as udpsocket:
         host_udp = (host, udp_port)
         print("[+] Connecting to {}:{} using UDP".format(host, udp_port))
-        try:
-            udpsocket.sendto(b'Hello from UDP', host_udp)
-
-        except ConnectionError:
-            pass
-
+        crypted_msg = xcrypt.encrypt(b'HELLO from 1234\r\n')
+        udpsocket.sendto(crypted_msg, host_udp)
         data = udpsocket.recv(BUFSIZE)
-        print(data.decode(encoding="utf-8"))
+
         if data == b'bye\r\n':
             print("[+] Server ending communication")
             udpsocket.sendto(b'.\r\n', host_udp)
-
-"""
 
 
 if __name__ == "__main__":

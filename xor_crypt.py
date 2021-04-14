@@ -17,8 +17,8 @@ class XorMsg:
             ba = bytearray()
             enc_key = self._enc_keys.pop(0)
             for i, b in enumerate(msg):
-                b_xor = ord(b) ^ ord(enc_key[i])
-                ba.insert(0, b_xor)
+                b_xor = b ^ enc_key[i]
+                ba.append(b_xor)
             return bytes(ba)
         else:
             return msg
@@ -28,8 +28,8 @@ class XorMsg:
             ba = bytearray()
             dec_key = self._dec_keys.pop(0)
             for i, b in enumerate(msg):
-                b_xor = ord(b) ^ ord(dec_key[i])
-                ba.insert(0, b_xor)
+                b_xor = b ^ dec_key[i]
+                ba.append(b_xor)
             return bytes(ba)
         else:
             return msg
