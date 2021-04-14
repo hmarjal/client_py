@@ -6,10 +6,9 @@ def get_parity(n):
     return n
 
 
-def add_parity(mjono):
-
+def add_parity(msg):
     ret = ""
-    for c in mjono:
+    for c in msg:
         c = ord(c)
         c <<= 1
         c += get_parity(c)
@@ -17,16 +16,21 @@ def add_parity(mjono):
     return ret
 
 
-"""
-sana = "abcde"
-for _ in sana:
-    print(bin(ord(_)))
+def check_parity(msg):
+    for c in msg:
+        c = ord(c)
+        parity_bit = (c & 1)
+        c >>= 1
+        parity_check = get_parity(c)
+        if parity_check != parity_bit:
+            return False
+    return True
 
 
-sana_parity = add_parity(sana)
-
-print(sana_parity)
-
-for _ in sana_parity:
-    print(bin(ord(_)))
-"""
+def remove_parity(msg):
+    ret = ""
+    for c in msg:
+        c = ord(c)
+        c >>= 1
+        ret = ret + chr(c)
+    return ret

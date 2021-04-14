@@ -1,20 +1,34 @@
 import socket
 import sys
 import enc_keys
+import xor_crypt
+import struct
 
 
 BUFSIZE = 128
-program_name = "client"
 
 
 def main():
     # Check command line arguments
-    if len(sys.argv) < 3:
-        print("[!] Wrong arguments. Usage: python3 {}.py <server> <port>".format(program_name))
+    if len(sys.argv) != 3:
+        print("[!] Wrong arguments. Usage: python3 {} <server> <port>".format(sys.argv[0]))
         return
 
     host = sys.argv[1]
-    print(host)
+    dots = len(host.split('.'))
+    if dots != 4:
+        print("[!] Invalid address {}".format(host))
+        return
+    for part in host.split('.'):
+        try:
+            sub_addr = int(part)
+        except ValueError as ve:
+            print(ve)
+            return
+        if 0 > sub_addr > 255:
+            print("[!] Invalid address")
+            return
+
     try:
         tcp_port = int(sys.argv[2])
         if 0 > tcp_port > 65535:
@@ -29,11 +43,12 @@ def main():
     my_keys = enc_keys.generate_keys()
     server_keys = []
 
-    with socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0) as tcpsocket:
-        tcpsocket.settimeout(5.0)
+    # Create TCP socket
+    with socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM) as tcpsocket:
+        tcpsocket.settimeout(1)
         try:
             tcpsocket.connect((host, tcp_port))
-        except ConnectionError as conn_err:
+        except (ConnectionError, OverflowError) as conn_err:
             print("[!] Error connecting to {}:{} using TCP".format(host, tcp_port))
             print(conn_err)
             return
@@ -59,7 +74,7 @@ def main():
                     s_key = d_recv.strip(b'\r\n')
                     server_keys.append(s_key)
                 tcpsocket.send(b'.\r\n')
-                print("[+] Received {} keys from server".format(len(server_keys)))
+                print("[+] Received {} encryption keys from server".format(len(server_keys)))
             d_recv = tcpsocket.recv(BUFSIZE)
 
         else:
@@ -69,9 +84,10 @@ def main():
         print("[!] Failed to receive UDP port from server.")
         return
 
-    with socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM, proto=0) as udpsocket:
+    # Create UDP socket
+    with socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM) as udpsocket:
         host_udp = (host, udp_port)
-        print("[-] Connecting to {}:{} using UDP".format(host, udp_port))
+        print("[+] Connecting to {}:{} using UDP".format(host, udp_port))
         try:
             udpsocket.sendto(b'Hello from UDP', host_udp)
 
