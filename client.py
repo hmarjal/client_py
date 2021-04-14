@@ -72,7 +72,8 @@ def main():
                     tcpsocket.send(key+b'\r\n')
                     d_recv = tcpsocket.recv(BUFSIZE)
                     s_key = d_recv.strip(b'\r\n')
-                    server_keys.append(s_key)
+                    s_key_as_bytes = bytes(s_key)
+                    server_keys.insert(-1, s_key_as_bytes)
                 tcpsocket.send(b'.\r\n')
                 print("[+] Received {} encryption keys from server".format(len(server_keys)))
             d_recv = tcpsocket.recv(BUFSIZE)
@@ -84,6 +85,8 @@ def main():
         print("[!] Failed to receive UDP port from server.")
         return
 
+
+"""
     # Create UDP socket
     with socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM) as udpsocket:
         host_udp = (host, udp_port)
@@ -99,6 +102,8 @@ def main():
         if data == b'bye\r\n':
             print("[+] Server ending communication")
             udpsocket.sendto(b'.\r\n', host_udp)
+
+"""
 
 
 if __name__ == "__main__":
