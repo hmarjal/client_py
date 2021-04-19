@@ -2,6 +2,7 @@ import socket
 import sys
 import enc_keys
 import xor_crypt
+import udp_struct
 import struct
 
 BUFSIZE = 128
@@ -54,6 +55,7 @@ def main():
         # Start communicating with the server
         tcpsocket.send(b'HELLO ENC\r\n')
         d_recv = tcpsocket.recv(BUFSIZE)
+        print(d_recv)
 
         while d_recv != b'.\r\n':
             if d_recv == b'':
@@ -71,8 +73,10 @@ def main():
                     d_recv = tcpsocket.recv(BUFSIZE)
                     s_key = d_recv.strip(b'\r\n')
                     s_key_as_bytes = bytes(s_key)
-                    decrypt_keys.insert(0, s_key_as_bytes)
+                    decrypt_keys.append(s_key_as_bytes)
+                decrypt_keys.reverse()
                 tcpsocket.send(b'.\r\n')
+
                 print("[+] Received {} encryption keys from server".format(len(decrypt_keys)))
             d_recv = tcpsocket.recv(BUFSIZE)
 
@@ -82,15 +86,19 @@ def main():
     if udp_port == "":
         print("[!] Failed to receive UDP port from server.")
         return
-    decrypt_keys.reverse()
-    xcrypt = xor_crypt.XorMsg(encrypt_keys, decrypt_keys)
+
+    xcrypt = xor_crypt.XorCrypt(decrypt_keys)
+    udpstruct = udp_struct.UdpPacket(encrypt_keys)
+    cid_b = bytes(cid)
 
     # Create UDP socket
     with socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM) as udpsocket:
         host_udp = (host, udp_port)
         print("[+] Connecting to {}:{} using UDP".format(host, udp_port))
-        crypted_msg = xcrypt.encrypt(b'HELLO from 1234\r\n')
-        udpsocket.sendto(crypted_msg, host_udp)
+        crypted_msg = xcrypt.encrypt(b'HELLO from '+cid_b)
+        udp_msg = udpstruct.pack_udp_packet(crypted_msg, cid_b)
+
+        udpsocket.sendto(udp_msg, host_udp)
         data = udpsocket.recv(BUFSIZE)
 
         if data == b'bye\r\n':

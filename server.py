@@ -37,7 +37,7 @@ def main():
                     conn.send(my_key+b'\r\n')
 
     decrypt_keys.reverse()
-    xcrypt = xor_crypt.XorMsg(encrypt_keys, decrypt_keys)
+    xcrypt = xor_crypt.XorCrypt(encrypt_keys, decrypt_keys)
 
     with socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM) as udpsocket:
         udpsocket.bind((HOST, UDPPORT))

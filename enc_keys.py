@@ -1,6 +1,5 @@
 import secrets
 
-
 def generate_keys() -> list:
     encrpytion_keys = []
     for n in range(20):
