@@ -5,7 +5,7 @@ import xor_crypt
 import udp_struct
 import struct
 
-BUFSIZE = 128
+BUFSIZE = 256
 
 
 def main():
@@ -53,15 +53,12 @@ def main():
             return
 
         # Start communicating with the server
-        tcpsocket.send(b'HELLO ENC\r\n')
+        tcpsocket.send(b'ENC\r\n')
         d_recv = tcpsocket.recv(BUFSIZE)
         print(d_recv)
 
         while d_recv != b'.\r\n':
-            if d_recv == b'':
-                print("[+] Connection closed by server")
-                tcpsocket.shutdown(socket.SHUT_RDWR)
-                break
+
             msg = d_recv.decode(encoding='utf-8').strip()
             if msg and not cid:
                 print("[+] Message from server:", msg)
@@ -76,8 +73,8 @@ def main():
                     decrypt_keys.append(s_key_as_bytes)
                 decrypt_keys.reverse()
                 tcpsocket.send(b'.\r\n')
-
                 print("[+] Received {} encryption keys from server".format(len(decrypt_keys)))
+
             d_recv = tcpsocket.recv(BUFSIZE)
 
         else:
