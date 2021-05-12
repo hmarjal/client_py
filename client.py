@@ -1,11 +1,11 @@
 import socket
 import sys
-import enc_keys
 import xor_crypt
 import udp_struct
 import struct
+import parity
 
-BUFSIZE = 256
+BUFSIZE = 64 * 1024
 
 
 def main():
@@ -37,11 +37,10 @@ def main():
         print(ve)
         return
 
-    cid = ""
-    udp_port = ""
-    encrypt_keys = enc_keys.generate_keys()
+    xcrypt = xor_crypt.XorCrypt()
     decrypt_keys = []
-
+    udpstruct = udp_struct.UdpPacket()
+    failed_parity_count = 0
     # Create TCP socket
     with socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM) as tcpsocket:
         tcpsocket.settimeout(10)
@@ -53,54 +52,101 @@ def main():
             return
 
         # Start communicating with the server
-        tcpsocket.send(b'ENC\r\n')
+        tcpsocket.send(b'HELLO ENC PAR MUL\r\n')
+        i = 0
+
+        while i < 20:
+            key = xcrypt.encryption_keys[i] + '\r\n'
+            tcpsocket.send(key.encode('utf-8'))
+            i += 1
+        tcpsocket.send(b'.\r\n')
+
         d_recv = tcpsocket.recv(BUFSIZE)
         print(d_recv)
+        data_list = d_recv.split(b'\r\n')
+        first_msg = data_list[0]
+        print("[+] Message from server:", first_msg.decode())
+        greeting, cid, udp_port = first_msg.split()
+        cid_s = cid.decode('utf-8')
+        udp_port = int(udp_port)
 
-        while d_recv != b'.\r\n':
+        j = 1
+        while j < 21:
+            decrypt_keys.append(data_list[j])
+            print("<Key {}> {}".format(j, data_list[j].decode("utf-8")))
+            j += 1
 
-            msg = d_recv.decode(encoding='utf-8').strip()
-            if msg and not cid:
-                print("[+] Message from server:", msg)
-                greeting, cid, udp_port = msg.split()
-                udp_port = int(udp_port)
-            if cid and udp_port:
-                for key in encrypt_keys:
-                    tcpsocket.send(key+b'\r\n')
-                    d_recv = tcpsocket.recv(BUFSIZE)
-                    s_key = d_recv.strip(b'\r\n')
-                    s_key_as_bytes = bytes(s_key)
-                    decrypt_keys.append(s_key_as_bytes)
-                decrypt_keys.reverse()
-                tcpsocket.send(b'.\r\n')
-                print("[+] Received {} encryption keys from server".format(len(decrypt_keys)))
-
-            d_recv = tcpsocket.recv(BUFSIZE)
-
-        else:
-            print("[+] Ending TCP communicaion")
+        xcrypt.add_decryption_keys(decrypt_keys)
 
     if udp_port == "":
         print("[!] Failed to receive UDP port from server.")
         return
-
-    xcrypt = xor_crypt.XorCrypt(decrypt_keys)
-    udpstruct = udp_struct.UdpPacket(encrypt_keys)
-    cid_b = bytes(cid)
-
     # Create UDP socket
     with socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM) as udpsocket:
         host_udp = (host, udp_port)
         print("[+] Connecting to {}:{} using UDP".format(host, udp_port))
-        crypted_msg = xcrypt.encrypt(b'HELLO from '+cid_b)
-        udp_msg = udpstruct.pack_udp_packet(crypted_msg, cid_b)
+        crypted_msg = xcrypt.encrypt_mul('HELLO from '+cid_s+'\n')
+        udp_msg = udpstruct.pack_udp_packet(crypted_msg, cid)
 
-        udpsocket.sendto(udp_msg, host_udp)
-        data = udpsocket.recv(BUFSIZE)
+        for msg in udp_msg:
+            udpsocket.sendto(msg, host_udp)
 
-        if data == b'bye\r\n':
-            print("[+] Server ending communication")
-            udpsocket.sendto(b'.\r\n', host_udp)
+        while True:
+            data = udpsocket.recv(BUFSIZE)
+            cid, ack, eom, rm, length, content = struct.unpack('!8s2?2H128s', data)
+            if 'Wrong' in content.strip(b'\x00').decode('utf-8'):
+                print("[+] FAIL!")
+                print(content.strip(b'\x00').decode('utf-8'))
+                break
+
+            if 'Bye' in content.strip(b'\x00').decode('utf-8') or eom:
+                print("[+] Server ending communication")
+                print(content.strip(b'\x00').decode('utf-8'))
+                break
+            parity_ok = True
+            total_len = length+rm
+            full_msg = content.strip(b'\x00')
+            parity_check = parity.check_parity(full_msg)
+            if parity_check is not True:
+                parity_ok = False
+            while rm > 0:
+                data = udpsocket.recv(BUFSIZE)
+                cid, ack, eom, rm, length, content = struct.unpack('!8s2?2H128s', data)
+                full_msg += content.strip(b'\x00')
+                parity_check = parity.check_parity(content)
+                if parity_check is not True:
+                    parity_ok = False
+
+            parity_msg = parity.remove_parity(full_msg)
+            content = xcrypt.decrypt_mul(parity_msg, total_len)
+            if parity_ok is not True:
+                failed_parity_count += 1
+                print("Corrupted MSG:", content)
+                fail_msg = xcrypt.encrypt_mul('Send again')
+                failed_parity = udpstruct.pack_udp_packet(fail_msg, cid, ack=0)
+                udpsocket.sendto(failed_parity[0], host_udp)
+
+            else:
+                print("RECEIVED WORD LIST", content)
+                word_list = content.split()
+                word_list.reverse()
+                ret_msg = ""
+                for word in word_list:
+                    ret_msg += word + " "
+                ret_msg = ret_msg.rstrip()
+                tot_len = len(ret_msg)
+                msg_split = [ret_msg[i:i+64] for i in range(0, len(ret_msg), 64)]
+                remain = tot_len
+                for msg in msg_split:
+                    msg_len = len(msg)
+                    remain -= msg_len
+                    print("SENDING REVERSED MESSAGE", msg)
+                    enc_msg = xcrypt.encrypt_mul(msg)
+                    ency = enc_msg
+                    enc_msg = parity.add_parity(enc_msg)
+                    enc_msg_bytes = enc_msg.encode('utf-8')
+                    udp_packet = struct.pack('!8s2?2H128s', cid[0:8], 1, 0, remain, msg_len, enc_msg_bytes)
+                    udpsocket.sendto(udp_packet, host_udp)
 
 
 if __name__ == "__main__":
